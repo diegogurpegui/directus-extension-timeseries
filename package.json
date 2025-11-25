@@ -1,6 +1,6 @@
 {
   "name": "dg-timeseries",
-  "description": "Directus panel extension for displaying timeseries data",
+  "description": "Directus panel extension for displaying timeseries data from a SQL query",
   "icon": "extension",
   "version": "1.0.0",
   "keywords": [
