@@ -2,7 +2,7 @@
   "name": "dg-timeseries",
   "description": "Directus panel extension for displaying timeseries data from a SQL query",
   "icon": "extension",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "author": "Diego H. Gurpegui",
   "license": "MIT",
   "keywords": [
