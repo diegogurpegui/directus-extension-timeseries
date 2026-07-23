@@ -7,7 +7,7 @@ A Directus panel extension for displaying timeseries data from SQL queries. Visu
 - **SQL Query Support**: Execute custom SQL queries to fetch timeseries data
 - **Multiple Chart Types**: Line and bar charts with various styling options
 - **Multiple Series**: Display multiple numeric series on the same chart
-- **Customizable Appearance**: Configure colors, curves, fills, and axis display
+- **Customizable Appearance**: Configure colors, curves, fills, axis display, and time grouping (days, weeks, months, years)
 - **Security**: Only SELECT queries are allowed, preventing destructive operations
 
 ## Requirements
@@ -52,6 +52,7 @@ Your SQL query must return data in the following format:
 The datetime column can be:
 - A `DATE`, `DATETIME`, or `TIMESTAMP` column
 - A string in ISO format (e.g., `'2024-01-01'` or `'2024-01-01 12:00:00'`)
+- Month buckets as `'YYYY-MM'` (e.g., `'2024-04'`) or year buckets as `'YYYY'` when using the matching **Time grouping** option
 - A Unix timestamp (number)
 
 **Example Query:**
@@ -81,6 +82,13 @@ This query will create a chart with:
 - **Type**: Dropdown
 - **Options**: `line`, `bar`
 - **Default**: `line`
+
+#### Time Grouping
+- **Field**: `timeGrouping`
+- **Type**: Dropdown
+- **Options**: `days`, `weeks`, `months`, `years`
+- **Default**: `days`
+- **Description**: Controls how the X-axis and tooltips format time. Set this to match how your SQL query groups data (e.g. `months` when the first column is `YYYY-MM` or monthly aggregates). Daily series should use `days`.
 
 #### Color
 - **Field**: `color`
@@ -152,7 +160,7 @@ WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 1 YEAR)
 ORDER BY timestamp ASC
 ```
 
-### Aggregated Data
+### Aggregated Data (by day)
 ```sql
 SELECT 
     DATE(created_at) as date,
@@ -163,6 +171,22 @@ WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
 GROUP BY DATE(created_at)
 ORDER BY date ASC
 ```
+
+Use **Time grouping**: `days`.
+
+### Aggregated Data (by month)
+```sql
+SELECT 
+    DATE_FORMAT(created_at, '%Y-%m') as month,
+    COUNT(*) as total_orders,
+    SUM(total_amount) as total_revenue
+FROM orders
+WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+ORDER BY month ASC
+```
+
+Use **Time grouping**: `months`.
 
 ## Security
 
@@ -197,8 +221,9 @@ npm run validate
 
 1. **Check SQL Query**: Ensure your query returns at least 2 columns and follows the required format
 2. **Check Data Types**: Verify the first column contains valid datetime values
-3. **Check Browser Console**: Open developer tools to see error messages
-4. **Verify Endpoint**: Ensure the `/dg-timeseries-sql` endpoint is accessible
+3. **Match Time Grouping**: If the chart X-axis shows day-level labels (e.g. mid-month dates) but your data is monthly or yearly, set **Time grouping** to `months` or `years` accordingly
+4. **Check Browser Console**: Open developer tools to see error messages
+5. **Verify Endpoint**: Ensure the `/dg-timeseries-sql` endpoint is accessible
 
 ### Query Errors
 
