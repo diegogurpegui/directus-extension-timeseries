@@ -1,14 +1,26 @@
 {
   "name": "dg-timeseries",
-  "description": "Directus panel extension for displaying timeseries data from a SQL query",
-  "icon": "extension",
+  "description": "Display timeseries from SQL queries in dashboard line and bar charts.",
+  "icon": "show_chart",
   "version": "1.1.2",
-  "author": "Diego H. Gurpegui",
+  "author": "Diego H. Gurpegui (https://github.com/diegogurpegui)",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/diegogurpegui/directus-extension-timeseries.git"
+  },
+  "homepage": "https://github.com/diegogurpegui/directus-extension-timeseries#readme",
+  "bugs": {
+    "url": "https://github.com/diegogurpegui/directus-extension-timeseries/issues"
+  },
   "keywords": [
     "directus",
     "directus-extension",
-    "directus-extension-panel"
+    "directus-extension-bundle",
+    "directus-extension-panel",
+    "timeseries",
+    "charts",
+    "sql"
   ],
   "type": "module",
   "files": [
@@ -42,7 +54,8 @@
     "build": "directus-extension build",
     "dev": "directus-extension build -w --no-minify",
     "link": "directus-extension link",
-    "validate": "directus-extension validate"
+    "validate": "directus-extension validate",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@directus/extensions-sdk": "17.0.3",

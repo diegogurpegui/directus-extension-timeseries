@@ -1,6 +1,6 @@
 # DG Timeseries SQL
 
-A Directus panel extension for displaying timeseries data from SQL queries. Visualize your time-based data with customizable line and bar charts powered by ApexCharts.
+Display timeseries from SQL queries on Directus dashboards with customizable line and bar charts (powered by [ApexCharts](https://apexcharts.com/)).
 
 ## Features
 
@@ -16,22 +16,43 @@ A Directus panel extension for displaying timeseries data from SQL queries. Visu
 
 ## Installation
 
-1. Install the extension:
+### Directus Marketplace (recommended)
+
+1. In the Data Studio, open **Settings → Marketplace** (or add the panel from a dashboard’s extension picker, depending on your Directus version).
+2. Search for **dg-timeseries** or **timeseries**.
+3. Install the extension and restart Directus if prompted.
+
+This bundle includes a panel and a SQL endpoint. The endpoint runs with full database access (not the Marketplace sandbox), so self-hosted instances with default Marketplace settings may need `MARKETPLACE_TRUST=all`. See [Including Extensions](https://directus.com/docs/self-hosting/including-extensions). Cloud and hosted projects follow their platform’s Marketplace trust policy.
+
+### npm
+
+From your Directus project’s `extensions` directory:
+
+```bash
+npm install dg-timeseries
+```
+
+Restart Directus after installation.
+
+### From source
+
+1. Clone [directus-extension-timeseries](https://github.com/diegogurpegui/directus-extension-timeseries) and install dependencies:
+
 ```bash
 npm install
 ```
 
 2. Build the extension:
+
 ```bash
 npm run build
 ```
 
-3. Link the extension to your Directus instance:
+3. Link to your Directus instance or copy the `dist` folder into your project’s `extensions` directory:
+
 ```bash
 npm run link
 ```
-
-Or copy the `dist` folder to your Directus `extensions` directory.
 
 ## Usage
 
