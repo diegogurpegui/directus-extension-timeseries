@@ -104,6 +104,15 @@ const uniqueXCount = computed(() => {
 	return timestamps.size;
 });
 
+/** Panels saved before time grouping existed may pass null or an empty string. */
+const resolvedTimeGrouping = computed((): NonNullable<typeof props.timeGrouping> => {
+	const grouping = props.timeGrouping;
+	if (grouping === 'days' || grouping === 'weeks' || grouping === 'months' || grouping === 'years') {
+		return grouping;
+	}
+	return 'days';
+});
+
 /**
  * Converts a SQL date column value to a Unix timestamp (ms).
  * Supports Date instances, numbers, and strings (year, year-month, or full dates).
@@ -147,7 +156,7 @@ function parseDateColumnValue(dateValue: unknown): number | null {
  */
 function xAxisPaddingMs(): number {
 	const day = 24 * 60 * 60 * 1000;
-	switch (props.timeGrouping) {
+	switch (resolvedTimeGrouping.value) {
 		case 'years':
 			return 183 * day;
 		case 'months':
@@ -167,7 +176,7 @@ function xAxisPaddingMs(): number {
  */
 function formatTooltipDate(timestamp: number): string {
 	const date = new Date(timestamp);
-	switch (props.timeGrouping) {
+	switch (resolvedTimeGrouping.value) {
 		case 'years':
 			return d(date, 'year');
 		case 'months':
@@ -185,7 +194,7 @@ function formatTooltipDate(timestamp: number): string {
  * @returns Formatter map for year, month, day, and hour tick labels.
  */
 function xAxisDatetimeFormatter() {
-	switch (props.timeGrouping) {
+	switch (resolvedTimeGrouping.value) {
 		case 'years':
 			return {
 				year: 'yyyy',
@@ -551,17 +560,19 @@ function setupChart() {
 	const padding = xAxisPaddingMs();
 	const xMin = dateRange.value.min !== undefined ? dateRange.value.min - padding : undefined;
 	const xMax = dateRange.value.max !== undefined ? dateRange.value.max + padding : undefined;
-	const discreteTimeAxis = props.timeGrouping !== 'days' && uniqueXCount.value > 0;
+	const discreteTimeAxis = resolvedTimeGrouping.value !== 'days' && uniqueXCount.value > 0;
 
 	chart.value = new ApexCharts(chartEl.value, {
 		colors: colors,
-		plotOptions: isBar
+		...(isBar
 			? {
-				bar: {
-					columnWidth: discreteTimeAxis ? '55%' : '70%',
+				plotOptions: {
+					bar: {
+						columnWidth: discreteTimeAxis ? '55%' : '70%',
+					},
 				},
 			}
-			: undefined,
+			: {}),
 		chart: {
 			type: chartType,
 			height: '100%',
