@@ -26,10 +26,12 @@ const props = withDefaults(
 		showXAxis?: boolean;
 		showYAxis?: boolean;
 		missingData?: 'null' | 'ignore' | string;
+		timeGrouping?: 'days' | 'weeks' | 'months' | 'years';
 	}>(),
 	{
 		showHeader: false,
 		sqlQuery: '',
+		timeGrouping: 'days',
 		chartType: 'line',
 		color: 'var(--theme--primary)',
 		fillType: 'gradient',
@@ -92,6 +94,129 @@ const dateRange = computed(() => {
 	};
 });
 
+const uniqueXCount = computed(() => {
+	const timestamps = new Set<number>();
+	seriesData.value.forEach((series) => {
+		series.data.forEach((point) => {
+			if (point.x) timestamps.add(point.x);
+		});
+	});
+	return timestamps.size;
+});
+
+/**
+ * Converts a SQL date column value to a Unix timestamp (ms).
+ * Supports Date instances, numbers, and strings (year, year-month, or full dates).
+ *
+ * @param dateValue - Raw value from the first column of a query row.
+ * @returns Milliseconds since epoch, or null if the value cannot be parsed.
+ */
+function parseDateColumnValue(dateValue: unknown): number | null {
+	if (dateValue instanceof Date) {
+		return dateValue.getTime();
+	}
+
+	if (typeof dateValue === 'number') {
+		return dateValue;
+	}
+
+	if (typeof dateValue !== 'string') {
+		return null;
+	}
+
+	const trimmed = dateValue.trim();
+	if (!trimmed) return null;
+
+	if (/^\d{4}$/.test(trimmed)) {
+		return new Date(Number(trimmed), 0, 1).getTime();
+	}
+
+	if (/^\d{4}-\d{2}$/.test(trimmed)) {
+		const [year, month] = trimmed.split('-').map(Number);
+		return new Date(year, month - 1, 1).getTime();
+	}
+
+	const parsed = new Date(trimmed);
+	return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+}
+
+/**
+ * Horizontal padding for the x-axis domain based on `timeGrouping`.
+ *
+ * @returns Padding in milliseconds added on each side of the data range.
+ */
+function xAxisPaddingMs(): number {
+	const day = 24 * 60 * 60 * 1000;
+	switch (props.timeGrouping) {
+		case 'years':
+			return 183 * day;
+		case 'months':
+			return 15 * day;
+		case 'weeks':
+			return 3.5 * day;
+		default:
+			return 0;
+	}
+}
+
+/**
+ * Formats a timestamp for tooltips and discrete x-axis labels.
+ *
+ * @param timestamp - Unix time in milliseconds.
+ * @returns Localized date string according to `timeGrouping`.
+ */
+function formatTooltipDate(timestamp: number): string {
+	const date = new Date(timestamp);
+	switch (props.timeGrouping) {
+		case 'years':
+			return d(date, 'year');
+		case 'months':
+			return d(date, { year: 'numeric', month: 'long' });
+		case 'weeks':
+			return d(date, { year: 'numeric', month: 'short', day: 'numeric' });
+		default:
+			return d(date, 'long');
+	}
+}
+
+/**
+ * ApexCharts `datetimeFormatter` presets per zoom level for the current `timeGrouping`.
+ *
+ * @returns Formatter map for year, month, day, and hour tick labels.
+ */
+function xAxisDatetimeFormatter() {
+	switch (props.timeGrouping) {
+		case 'years':
+			return {
+				year: 'yyyy',
+				month: 'yyyy',
+				day: 'yyyy',
+				hour: 'yyyy',
+			};
+		case 'months':
+			return {
+				year: "yyyy",
+				month: "MMM 'yy",
+				day: "MMM 'yy",
+				hour: "MMM 'yy",
+			};
+		case 'weeks':
+			return {
+				year: "yyyy",
+				month: "MMM 'yy",
+				day: 'dd MMM',
+				hour: 'dd MMM',
+			};
+		default:
+			return {
+				year: 'yyyy',
+				month: "MMM 'yy",
+				day: 'dd MMM',
+				hour: 'HH:mm',
+			};
+	}
+}
+
 // Watch SQL query changes - fetch new data when query changes
 watch(
 	() => props.sqlQuery,
@@ -125,10 +250,12 @@ watch(
 		() => props.showXAxis,
 		() => props.showYAxis,
 		() => props.missingData,
+		() => props.timeGrouping,
 	],
 	() => {
 		console.log('[Timeseries] Chart configuration changed:', {
 			chartType: props.chartType,
+			timeGrouping: props.timeGrouping,
 			color: props.color,
 			fillType: props.fillType,
 			curveType: props.curveType,
@@ -178,6 +305,10 @@ onUnmounted(() => {
 	chart.value?.destroy();
 });
 
+/**
+ * Loads chart data from the panel SQL query via `/dg-timeseries-sql` and updates `seriesData`.
+ * On failure or empty results, clears series and refreshes the chart to show errors or empty state.
+ */
 async function fetchData() {
 	console.log('[Timeseries] fetchData() called');
 	if (!props.sqlQuery?.trim()) {
@@ -296,15 +427,8 @@ async function fetchData() {
 					const dateValue = row[dateColumn];
 					const numericValue = row[colName];
 
-					// Parse datetime
-					let timestamp: number;
-					if (dateValue instanceof Date) {
-						timestamp = dateValue.getTime();
-					} else if (typeof dateValue === 'string') {
-						timestamp = new Date(dateValue).getTime();
-					} else if (typeof dateValue === 'number') {
-						timestamp = dateValue;
-					} else {
+					const timestamp = parseDateColumnValue(dateValue);
+					if (timestamp === null) {
 						return null;
 					}
 
@@ -370,6 +494,10 @@ async function fetchData() {
 	}
 }
 
+/**
+ * Destroys any existing ApexCharts instance and renders a new chart from `seriesData` and panel props.
+ * No-op when the chart container or data is missing.
+ */
 function setupChart() {
 	console.log('[Timeseries] setupChart() called', {
 		hasChartEl: !!chartEl.value,
@@ -420,8 +548,20 @@ function setupChart() {
 		colors: colors.slice(0, 3), // Log first 3 colors
 	});
 
+	const padding = xAxisPaddingMs();
+	const xMin = dateRange.value.min !== undefined ? dateRange.value.min - padding : undefined;
+	const xMax = dateRange.value.max !== undefined ? dateRange.value.max + padding : undefined;
+	const discreteTimeAxis = props.timeGrouping !== 'days' && uniqueXCount.value > 0;
+
 	chart.value = new ApexCharts(chartEl.value, {
 		colors: colors,
+		plotOptions: isBar
+			? {
+				bar: {
+					columnWidth: discreteTimeAxis ? '55%' : '70%',
+				},
+			}
+			: undefined,
 		chart: {
 			type: chartType,
 			height: '100%',
@@ -492,7 +632,7 @@ function setupChart() {
 			x: {
 				show: true,
 				formatter(date: number) {
-					return d(new Date(date), 'long');
+					return formatTooltipDate(date);
 				},
 			},
 			y: {
@@ -515,10 +655,9 @@ function setupChart() {
 			axisBorder: {
 				show: false,
 			},
-			range: dateRange.value.min && dateRange.value.max
-				? dateRange.value.max - dateRange.value.min
-				: undefined,
-			max: dateRange.value.max,
+			min: xMin,
+			max: xMax,
+			tickAmount: discreteTimeAxis ? uniqueXCount.value : undefined,
 			labels: {
 				show: props.showXAxis ?? true,
 				offsetY: -4,
@@ -529,6 +668,10 @@ function setupChart() {
 					fontSize: '10px',
 				},
 				datetimeUTC: false,
+				datetimeFormatter: xAxisDatetimeFormatter(),
+				formatter: discreteTimeAxis
+					? (value: string) => formatTooltipDate(Number(value))
+					: undefined,
 			},
 			crosshairs: {
 				stroke: {
@@ -573,6 +716,13 @@ function setupChart() {
 	console.log('[Timeseries] Chart rendered successfully');
 }
 
+/**
+ * Builds a color palette for multiple series (theme variable or HSL steps).
+ *
+ * @param count - Number of series.
+ * @param baseColor - Primary color from panel options.
+ * @returns One color per series.
+ */
 function generateColors(count: number, baseColor: string): string[] {
 	if (count === 1) return [baseColor];
 

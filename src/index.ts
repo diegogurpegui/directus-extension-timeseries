@@ -22,6 +22,26 @@ export default definePanel({
       },
     },
     {
+      field: "timeGrouping",
+      type: "string",
+      name: "Time grouping",
+      meta: {
+        interface: "select-dropdown",
+        width: "half",
+        options: {
+          choices: [
+            { text: "Days", value: "days" },
+            { text: "Weeks", value: "weeks" },
+            { text: "Months", value: "months" },
+            { text: "Years", value: "years" },
+          ],
+        },
+      },
+      schema: {
+        default_value: "days",
+      },
+    },
+    {
       field: "chartType",
       type: "string",
       name: "Chart Type",
