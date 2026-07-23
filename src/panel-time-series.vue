@@ -104,6 +104,17 @@ const uniqueXCount = computed(() => {
 	return timestamps.size;
 });
 
+/** Distinct x timestamps across all series, in ascending order. */
+function sortedUniqueXTimestamps(): number[] {
+	const timestamps = new Set<number>();
+	seriesData.value.forEach((series) => {
+		series.data.forEach((point) => {
+			if (point.x) timestamps.add(point.x);
+		});
+	});
+	return [...timestamps].sort((a, b) => a - b);
+}
+
 /** Panels saved before time grouping existed may pass null or an empty string. */
 const resolvedTimeGrouping = computed((): NonNullable<typeof props.timeGrouping> => {
 	const grouping = props.timeGrouping;
@@ -561,6 +572,21 @@ function setupChart() {
 	const xMin = dateRange.value.min !== undefined ? dateRange.value.min - padding : undefined;
 	const xMax = dateRange.value.max !== undefined ? dateRange.value.max + padding : undefined;
 	const discreteTimeAxis = resolvedTimeGrouping.value !== 'days' && uniqueXCount.value > 0;
+	const discreteXValues = discreteTimeAxis ? sortedUniqueXTimestamps() : [];
+	const discreteCategoryLabels = discreteXValues.map((timestamp) => formatTooltipDate(timestamp));
+
+	const chartSeries = discreteTimeAxis
+		? seriesData.value.map((series) => ({
+			name: series.name,
+			data: discreteXValues.map((timestamp) => {
+				const point = series.data.find((p) => p.x === timestamp);
+				return point?.y ?? null;
+			}),
+		}))
+		: seriesData.value.map((series) => ({
+			name: series.name,
+			data: series.data,
+		}));
 
 	chart.value = new ApexCharts(chartEl.value, {
 		colors: colors,
@@ -592,10 +618,7 @@ function setupChart() {
 				enabled: false,
 			},
 		},
-		series: seriesData.value.map(series => ({
-			name: series.name,
-			data: series.data,
-		})),
+		series: chartSeries,
 		stroke: {
 			curve: isBar ? 'straight' : props.curveType,
 			width: 2,
@@ -642,8 +665,18 @@ function setupChart() {
 			},
 			x: {
 				show: true,
-				formatter(date: number) {
-					return formatTooltipDate(date);
+				formatter(
+					value: number | string,
+					opts?: { dataPointIndex?: number },
+				) {
+					if (discreteTimeAxis) {
+						const index = opts?.dataPointIndex;
+						if (index !== undefined && discreteCategoryLabels[index]) {
+							return discreteCategoryLabels[index];
+						}
+						return String(value);
+					}
+					return formatTooltipDate(Number(value));
 				},
 			},
 			y: {
@@ -656,7 +689,9 @@ function setupChart() {
 			},
 		},
 		xaxis: {
-			type: 'datetime',
+			type: discreteTimeAxis ? 'category' : 'datetime',
+			categories: discreteTimeAxis ? discreteCategoryLabels : undefined,
+			tickPlacement: discreteTimeAxis && isBar ? 'on' : undefined,
 			tooltip: {
 				enabled: false,
 			},
@@ -666,9 +701,8 @@ function setupChart() {
 			axisBorder: {
 				show: false,
 			},
-			min: xMin,
-			max: xMax,
-			tickAmount: discreteTimeAxis ? uniqueXCount.value : undefined,
+			min: discreteTimeAxis ? undefined : xMin,
+			max: discreteTimeAxis ? undefined : xMax,
 			labels: {
 				show: props.showXAxis ?? true,
 				offsetY: -4,
@@ -679,10 +713,7 @@ function setupChart() {
 					fontSize: '10px',
 				},
 				datetimeUTC: false,
-				datetimeFormatter: xAxisDatetimeFormatter(),
-				formatter: discreteTimeAxis
-					? (value: string) => formatTooltipDate(Number(value))
-					: undefined,
+				datetimeFormatter: discreteTimeAxis ? undefined : xAxisDatetimeFormatter(),
 			},
 			crosshairs: {
 				stroke: {
