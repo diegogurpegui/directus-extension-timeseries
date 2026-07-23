@@ -124,6 +124,26 @@ const resolvedTimeGrouping = computed((): NonNullable<typeof props.timeGrouping>
 	return 'days';
 });
 
+function resolvedChartType(): 'line' | 'bar' {
+	return props.chartType === 'bar' ? 'bar' : 'line';
+}
+
+function resolvedCurveType(): 'smooth' | 'straight' | 'stepline' {
+	const curve = props.curveType;
+	if (curve === 'smooth' || curve === 'straight' || curve === 'stepline') {
+		return curve;
+	}
+	return 'smooth';
+}
+
+function resolvedFillType(): 'gradient' | 'solid' | 'disabled' {
+	const fill = props.fillType;
+	if (fill === 'gradient' || fill === 'solid' || fill === 'disabled') {
+		return fill;
+	}
+	return 'gradient';
+}
+
 /**
  * Converts a SQL date column value to a Unix timestamp (ms).
  * Supports Date instances, numbers, and strings (year, year-month, or full dates).
@@ -543,9 +563,13 @@ function setupChart() {
 		return;
 	}
 
+	error.value = null;
+
 	// Determine chart type
-	const isBar = props.chartType === 'bar';
-	const isArea = !isBar && props.fillType !== 'disabled';
+	const chartKind = resolvedChartType();
+	const isBar = chartKind === 'bar';
+	const fillType = resolvedFillType();
+	const isArea = !isBar && fillType !== 'disabled';
 	const chartType = isBar ? 'bar' : isArea ? 'area' : 'line';
 
 	console.log('[Timeseries] Chart configuration:', {
@@ -588,7 +612,107 @@ function setupChart() {
 			data: series.data,
 		}));
 
-	chart.value = new ApexCharts(chartEl.value, {
+	const xAxisLabelOptions: Record<string, unknown> = {
+		show: props.showXAxis ?? true,
+		offsetY: -4,
+		style: {
+			fontFamily: 'var(--theme--fonts--sans--font-family)',
+			foreColor: 'var(--theme--foreground-subdued)',
+			fontWeight: 600,
+			fontSize: '10px',
+		},
+		datetimeUTC: false,
+	};
+	if (!discreteTimeAxis) {
+		xAxisLabelOptions.datetimeFormatter = xAxisDatetimeFormatter();
+	}
+
+	const xaxis: Record<string, unknown> = {
+		type: discreteTimeAxis ? 'category' : 'datetime',
+		tooltip: {
+			enabled: false,
+		},
+		axisTicks: {
+			show: false,
+		},
+		axisBorder: {
+			show: false,
+		},
+		labels: xAxisLabelOptions,
+		crosshairs: {
+			stroke: {
+				color: 'var(--theme--form--field--input--border-color)',
+			},
+		},
+	};
+	if (discreteTimeAxis) {
+		xaxis.categories = discreteCategoryLabels;
+		if (isBar) {
+			xaxis.tickPlacement = 'on';
+		}
+	} else {
+		if (xMin !== undefined) {
+			xaxis.min = xMin;
+		}
+		if (xMax !== undefined) {
+			xaxis.max = xMax;
+		}
+	}
+
+	const fill: Record<string, unknown> = {
+		type: isBar ? 'solid' : (fillType === 'disabled' ? 'solid' : fillType),
+	};
+	if (isBar) {
+		fill.opacity = 0.8;
+	} else if (fillType !== 'disabled') {
+		fill.gradient = {
+			colorStops: colors.map(color => [
+				{
+					offset: 0,
+					color: color,
+					opacity: 0.25,
+				},
+				{
+					offset: 100,
+					color: color,
+					opacity: 0,
+				},
+			]),
+		};
+	}
+
+	const yAxisTicks = Math.max(2, Number(props.height) - 4);
+	const yaxis: Record<string, unknown> = {
+		show: props.showYAxis ?? true,
+		forceNiceScale: true,
+		tickAmount: Number.isFinite(yAxisTicks) ? yAxisTicks : 2,
+		labels: {
+			offsetY: 1,
+			offsetX: -4,
+			formatter: (value: number) => {
+				return value > 10000
+					? abbreviateNumber(value, 1)
+					: n(value, 'decimal', {
+						minimumFractionDigits: props.decimals ?? 0,
+						maximumFractionDigits: props.decimals ?? 0,
+					} as any);
+			},
+			style: {
+				fontFamily: 'var(--theme--fonts--sans--font-family)',
+				foreColor: 'var(--theme--foreground-subdued)',
+				fontWeight: 600,
+				fontSize: '10px',
+			},
+		},
+	};
+	if (yAxisRange.value.min !== undefined) {
+		yaxis.min = yAxisRange.value.min;
+	}
+	if (yAxisRange.value.max !== undefined) {
+		yaxis.max = yAxisRange.value.max;
+	}
+
+	const chartOptions = {
 		colors: colors,
 		...(isBar
 			? {
@@ -620,34 +744,16 @@ function setupChart() {
 		},
 		series: chartSeries,
 		stroke: {
-			curve: isBar ? 'straight' : props.curveType,
+			curve: isBar ? 'straight' : resolvedCurveType(),
 			width: 2,
 			lineCap: 'round',
 		},
 		markers: {
 			hover: {
-				size: undefined,
 				sizeOffset: 4,
 			},
 		},
-		fill: {
-			type: isBar ? 'solid' : (props.fillType === 'disabled' ? 'solid' : props.fillType),
-			gradient: isBar ? undefined : {
-				colorStops: colors.map(color => [
-					{
-						offset: 0,
-						color: color,
-						opacity: 0.25,
-					},
-					{
-						offset: 100,
-						color: color,
-						opacity: 0,
-					},
-				]),
-			},
-			opacity: isBar ? 0.8 : undefined,
-		},
+		fill,
 		grid: {
 			borderColor: 'var(--theme--border-color-subdued)',
 			padding: {
@@ -688,74 +794,35 @@ function setupChart() {
 				},
 			},
 		},
-		xaxis: {
-			type: discreteTimeAxis ? 'category' : 'datetime',
-			categories: discreteTimeAxis ? discreteCategoryLabels : undefined,
-			tickPlacement: discreteTimeAxis && isBar ? 'on' : undefined,
-			tooltip: {
-				enabled: false,
-			},
-			axisTicks: {
-				show: false,
-			},
-			axisBorder: {
-				show: false,
-			},
-			min: discreteTimeAxis ? undefined : xMin,
-			max: discreteTimeAxis ? undefined : xMax,
-			labels: {
-				show: props.showXAxis ?? true,
-				offsetY: -4,
-				style: {
-					fontFamily: 'var(--theme--fonts--sans--font-family)',
-					foreColor: 'var(--theme--foreground-subdued)',
-					fontWeight: 600,
-					fontSize: '10px',
-				},
-				datetimeUTC: false,
-				datetimeFormatter: discreteTimeAxis ? undefined : xAxisDatetimeFormatter(),
-			},
-			crosshairs: {
-				stroke: {
-					color: 'var(--theme--form--field--input--border-color)',
-				},
-			},
-		},
-		yaxis: {
-			show: props.showYAxis ?? true,
-			forceNiceScale: true,
-			min: yAxisRange.value.min,
-			max: yAxisRange.value.max,
-			tickAmount: props.height - 4,
-			labels: {
-				offsetY: 1,
-				offsetX: -4,
-				formatter: (value: number) => {
-					return value > 10000
-						? abbreviateNumber(value, 1)
-						: n(value, 'decimal', {
-							minimumFractionDigits: props.decimals ?? 0,
-							maximumFractionDigits: props.decimals ?? 0,
-						} as any);
-				},
-				style: {
-					fontFamily: 'var(--theme--fonts--sans--font-family)',
-					foreColor: 'var(--theme--foreground-subdued)',
-					fontWeight: 600,
-					fontSize: '10px',
-				},
-			},
-		},
+		xaxis,
+		yaxis,
 		legend: {
 			show: seriesData.value.length > 1,
 			position: 'top',
 			horizontalAlign: 'right',
 		},
-	});
+	};
 
+	try {
+		chart.value = new ApexCharts(chartEl.value, chartOptions);
+	} catch (constructError: unknown) {
+		const message = constructError instanceof Error ? constructError.message : String(constructError);
+		console.error('[Timeseries] Chart construction failed:', constructError);
+		error.value = message;
+		return;
+	}
+
+	const chartInstance = chart.value;
 	console.log('[Timeseries] Rendering chart...');
-	chart.value.render();
-	console.log('[Timeseries] Chart rendered successfully');
+	chartInstance.render().catch((renderError: unknown) => {
+		if (chart.value !== chartInstance) {
+			return;
+		}
+		const message = renderError instanceof Error ? renderError.message : String(renderError);
+		console.error('[Timeseries] Chart render failed:', renderError);
+		error.value = message;
+	});
+	console.log('[Timeseries] Chart render started');
 }
 
 /**
